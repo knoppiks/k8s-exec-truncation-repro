@@ -1,0 +1,11 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+k3s-docker,3,ws,32,slow,0,33554432,30371840,3182592,no,0,0,29,truncated
+k3s-docker,3,ws,32,slow,0,33554432,29596672,3957760,no,1,443,29,truncated
+k3s-docker,3,ws,32,slow,0,33554432,30009344,3545088,no,0,0,28,truncated
+k3s-docker,3,ws,32,slow,0,33554432,29387776,4166656,no,1,266,28,truncated
+k3s-docker,3,ws,32,slow,0,33554432,28312576,5241856,no,1,443,28,truncated
+k3s-docker,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+k3s-docker,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+k3s-docker,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+k3s-docker,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+k3s-docker,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete

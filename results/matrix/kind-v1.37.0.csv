@@ -1,0 +1,11 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+kind,3,ws,32,slow,0,33554432,32959488,594944,no,0,0,32,truncated
+kind,3,ws,32,slow,0,33554432,32250880,1303552,no,0,0,30,truncated
+kind,3,ws,32,slow,0,33554432,30683136,2871296,no,1,266,29,truncated
+kind,3,ws,32,slow,0,33554432,31376384,2178048,no,1,266,30,truncated
+kind,3,ws,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+kind,3,spdy,32,slow,0,33554432,31630336,1924096,no,0,0,31,truncated
+kind,3,spdy,32,slow,0,33554432,31497216,2057216,no,0,0,31,truncated
+kind,3,spdy,32,slow,0,33554432,30282752,3271680,no,0,0,29,truncated
+kind,3,spdy,32,slow,0,33554432,32086016,1468416,no,0,0,31,truncated
+kind,3,spdy,32,slow,0,33554432,31483904,2070528,no,0,0,31,truncated

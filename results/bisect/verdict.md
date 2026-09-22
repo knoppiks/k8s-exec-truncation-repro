@@ -1,0 +1,1 @@
+kubernetes: truncation survives removal of the k3s tunnel (rung 4 failed 9). The defect is in kubelet or apiserver. Rung 2 (direct kubelet:10250) is now worth its cost and splits the two. Reopen kubernetes/kubernetes#60140 with this reproduction.

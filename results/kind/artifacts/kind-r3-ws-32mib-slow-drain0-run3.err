@@ -1,0 +1,3 @@
+E0922 23:57:32.218739  107298 v2.go:151] "Copying stdout failed" err="next reader: unexpected EOF"
+E0922 23:57:32.218819  107298 v2.go:168] "Copying stderr failed" err="next reader: unexpected EOF"
+error: error reading from error stream: next reader: unexpected EOF

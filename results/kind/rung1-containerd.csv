@@ -1,0 +1,6 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+kind,1,na,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+kind,1,na,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+kind,1,na,32,slow,0,33554432,33554432,0,yes,0,0,32,complete
+kind,1,na,32,slow,0,33554432,33554432,0,yes,0,0,32,complete
+kind,1,na,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
