@@ -1,0 +1,7 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+k8s-a,5,ws,32,slow,45,33554432,33554432,0,yes,0,0,48,complete
+k8s-a,5,ws,32,slow,45,33554432,33554432,0,yes,0,0,53,complete
+k8s-a,5,ws,32,slow,45,33554432,33554432,0,yes,0,0,50,complete
+k8s-a,5,spdy,32,slow,45,33554432,33554432,0,yes,0,0,49,complete
+k8s-a,5,spdy,32,slow,45,33554432,33554432,0,yes,0,0,49,complete
+k8s-a,5,spdy,32,slow,45,33554432,33554432,0,yes,0,0,51,complete

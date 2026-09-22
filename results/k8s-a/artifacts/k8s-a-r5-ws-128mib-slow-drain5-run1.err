@@ -1,0 +1,3 @@
+E0922 21:05:22.481684   21989 v2.go:168] "Copying stderr failed" err="read message: websocket: close 1006 (abnormal closure): unexpected EOF"
+E0922 21:05:22.481690   21989 v2.go:151] "Copying stdout failed" err="read message: websocket: close 1006 (abnormal closure): unexpected EOF"
+error: error reading from error stream: read message: websocket: close 1006 (abnormal closure): unexpected EOF
