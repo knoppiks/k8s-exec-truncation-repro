@@ -1,0 +1,14 @@
+# Tools fetched on demand (kind), never vendored.
+.tools/
+
+# Kubeconfigs of throwaway clusters.
+*.kubeconfig
+
+# Working notes and plans. Not part of the evidence and not addressed to the
+# reader of this repository.
+.agents/
+
+# Payload bodies. The digest and the byte count are the evidence; the bytes
+# themselves are reproducible from the size. Only the 4 KiB tail of a short
+# read is kept, and that is committed deliberately.
+*.bin

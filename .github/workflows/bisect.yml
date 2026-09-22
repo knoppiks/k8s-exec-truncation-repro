@@ -1,0 +1,74 @@
+name: bisect
+
+# Which layer loses the bytes: containerd, the k3s tunnel, or kubernetes.
+#
+# The ladder is in bisect.sh and the branching is in its verdict. This workflow
+# exists so a maintainer can re-run the bisection on neutral hardware without
+# trusting anyone's workstation.
+
+on:
+  workflow_dispatch:
+    inputs:
+      k3s_minor:
+        description: k3s minor version
+        default: "1.36"
+      sizes:
+        description: payload sizes in MiB
+        default: "128"
+      readers:
+        description: reader profiles
+        default: "slow"
+      runs:
+        description: repeats per cell
+        default: "5"
+      pod_node:
+        description: where the payload pod runs (agent or server)
+        default: "agent"
+
+permissions:
+  contents: read
+
+jobs:
+  ladder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve k3s image tag
+        id: tag
+        run: echo "tag=$(env/resolve-k3s-tag.sh ${{ inputs.k3s_minor }})" >>"$GITHUB_OUTPUT"
+
+      - name: Run the ladder
+        env:
+          NETEM_DELAY_MS: "20"
+        run: |
+          ./bisect.sh \
+            --k3s-version "${{ steps.tag.outputs.tag }}" \
+            --sizes "${{ inputs.sizes }}" \
+            --readers "${{ inputs.readers }}" \
+            --transports ws,spdy \
+            --drains 0 \
+            --runs "${{ inputs.runs }}" \
+            --pod-node "${{ inputs.pod_node }}" \
+            --csv results/ci/ladder-${{ inputs.k3s_minor }}.csv
+
+      - name: Verdict
+        if: always()
+        run: |
+          {
+            echo '## Verdict'
+            cat results/bisect/verdict.md 2>/dev/null || echo 'no verdict produced'
+            echo
+            echo '## Rows'
+            ./repro.sh report --csv results/ci/ladder-${{ inputs.k3s_minor }}.csv
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ladder-${{ inputs.k3s_minor }}
+          path: |
+            results/ci/*.csv
+            results/bisect/verdict.md
+          if-no-files-found: warn

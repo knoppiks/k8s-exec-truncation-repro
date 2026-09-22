@@ -1,0 +1,114 @@
+name: matrix
+
+# Does the exec stream lose bytes, and on which runtime, version and path?
+#
+# Read the caveat in the README before believing a green run: a single fast
+# runner is the configuration least likely to fail, which is why this workflow
+# forces a backlog with netem and a throttled reader. A green matrix without
+# those is not evidence of anything.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: payload sizes in MiB, comma separated
+        default: "32,128"
+      readers:
+        description: reader profiles (fast, slow = 1 MiB/s)
+        default: "slow"
+      runs:
+        description: repeats per cell
+        default: "3"
+      netem_delay_ms:
+        description: delay on the docker bridge, 0 to disable
+        default: "20"
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  k3s:
+    name: k3s ${{ matrix.minor }} egress=${{ matrix.egress }} pod=${{ matrix.pod_node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.30 is in the list because it is the release that made WebSocket the
+        # default, i.e. the release kubernetes#60140 believes fixed this.
+        minor: ["1.30", "1.32", "1.34", "1.36"]
+        egress: [agent, disabled]
+        pod_node: [agent]
+        include:
+          - minor: "1.36"
+            egress: agent
+            pod_node: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve k3s image tag
+        id: tag
+        run: echo "tag=$(env/resolve-k3s-tag.sh ${{ matrix.minor }})" >>"$GITHUB_OUTPUT"
+
+      - name: Run grid
+        env:
+          K3S_VERSION: ${{ steps.tag.outputs.tag }}
+          EGRESS: ${{ matrix.egress }}
+          POD_NODE: ${{ matrix.pod_node }}
+          NETEM_DELAY_MS: ${{ inputs.netem_delay_ms || '20' }}
+        run: |
+          ./repro.sh setup --env k3s-docker
+          ./repro.sh grid --env k3s-docker \
+            --sizes "${{ inputs.sizes || '32,128' }}" \
+            --readers "${{ inputs.readers || 'slow' }}" \
+            --transports ws,spdy \
+            --drains 0,5 \
+            --runs "${{ inputs.runs || '3' }}" \
+            --csv "results/ci/k3s-${{ matrix.minor }}-${{ matrix.egress }}-${{ matrix.pod_node }}.csv" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Teardown
+        if: always()
+        run: ./repro.sh teardown --env k3s-docker || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: csv-k3s-${{ matrix.minor }}-${{ matrix.egress }}-${{ matrix.pod_node }}
+          path: results/ci/*.csv
+          if-no-files-found: warn
+
+  kind:
+    name: kind (vanilla kubernetes, control group)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: exec-repro
+          config: env/kind-cluster.yaml
+
+      - name: Run grid
+        env:
+          NETEM_DELAY_MS: ${{ inputs.netem_delay_ms || '20' }}
+        run: |
+          ./repro.sh setup --env kind
+          ./repro.sh grid --env kind \
+            --sizes "${{ inputs.sizes || '32,128' }}" \
+            --readers "${{ inputs.readers || 'slow' }}" \
+            --transports ws,spdy \
+            --drains 0,5 \
+            --runs "${{ inputs.runs || '3' }}" \
+            --csv results/ci/kind.csv \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: csv-kind
+          path: results/ci/*.csv
+          if-no-files-found: warn

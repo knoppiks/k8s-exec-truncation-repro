@@ -1,0 +1,8 @@
+# Two nodes so that apiserver→kubelet is a hop between containers, as it is on
+# a real cluster. A single-node kind would put both ends in one kernel and make
+# the control group easier than the thing it is controlling for.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker
