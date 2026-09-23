@@ -16,10 +16,13 @@ of this describes it as a size problem.
 
 ---
 
-## What it cost before it was measured
+## Why it matters
 
-A 29 MB Minecraft world archive arrived as 16 MB, cut inside a region file, and the backup
-was recorded as successful. `kubectl` had exited `0`.
+The common use of a large exec stream is getting data out of a pod that has no other way
+out: `kubectl exec pod -- tar cf - /data > backup.tar`. A 29 MB archive arriving as 16 MB,
+cut mid-file, is indistinguishable from a complete one at the receiving end — the exit
+code is `0`, the stream ended, and nothing downstream knows how long it should have been.
+Backups taken this way are recorded as successful.
 
 ## The claim, in one table
 
