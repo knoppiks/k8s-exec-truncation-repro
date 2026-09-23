@@ -48,11 +48,32 @@ build_exec_argv() {
       EXEC_ARGV+=(-n "${NAMESPACE:-exec-repro}" exec "${POD:-payload}" -- sh -c "$cmd")
       ;;
     crictl)
-      # Rung 1: containerd's streaming server alone, no kubelet, no apiserver.
-      # CRICTL_CMD differs per distribution, hence the variable.
-      # shellcheck disable=SC2206
-      local -a crictl_cmd=(${CRICTL_CMD:-crictl})
-      EXEC_ARGV=(docker exec -i "$CRICTL_DOCKER" "${crictl_cmd[@]}" exec "$CRICTL_ID" sh -c "$cmd")
+      # Rung 1: the runtime's streaming server alone, no kubelet, no apiserver.
+      #
+      # The reader must sit directly on crictl's stdout, inside the node. Put
+      # on the host, behind `docker exec`, it is shielded by docker's attach
+      # stream, which absorbs the backlog: crictl then drains the runtime at
+      # full speed and the rung reports clean when it is not. So the throttle
+      # runs in the node, into a file there, and the file is sent back
+      # unthrottled once crictl has finished. The host side reads fast.
+      local rate q_cmd
+      rate=$(reader_rate "${CURRENT_READER:-fast}") || return 64
+      q_cmd=$(printf '%q' "$cmd")
+      local in_node
+      if [[ "$rate" == 0 ]]; then
+        in_node="${CRICTL_CMD:-crictl} exec $CRICTL_ID sh -c $q_cmd"
+      else
+        # A pipeline's first exit status is not portable to busybox sh, so the
+        # exit status of crictl is carried through a file.
+        in_node="$(slow_sink_source)
+          rm -f /tmp/.crictl-out /tmp/.crictl-rc
+          { ${CRICTL_CMD:-crictl} exec $CRICTL_ID sh -c $q_cmd; echo \$? > /tmp/.crictl-rc; } | slow_sink $rate /tmp/.crictl-out
+          cat /tmp/.crictl-out
+          rc=\$(cat /tmp/.crictl-rc)
+          rm -f /tmp/.crictl-out /tmp/.crictl-rc
+          exit \$rc"
+      fi
+      EXEC_ARGV=(docker exec -i "$CRICTL_DOCKER" sh -c "$in_node")
       ;;
     dockerexec)
       # The control for rung 1. Rung 1 reaches containerd through `docker exec`,
@@ -98,7 +119,13 @@ run_once() {
   local started ended rc
 
   mkdir -p "$outdir"
+  CURRENT_READER=$reader
   build_exec_argv "$(payload_cmd "$size_mib" "$drain")"
+
+  # Runners that throttle in the node deliver an already-drained result, so
+  # the host must not throttle it a second time.
+  local host_reader=$reader
+  [[ "${RUNNER:-kubectl}" == crictl ]] && host_reader=fast
 
   local -a env_prefix=()
   local t
@@ -108,7 +135,7 @@ run_once() {
   started=$(date +%s)
   set +e
   "${env_prefix[@]}" timeout --signal=KILL "${RUN_TIMEOUT:-900}" \
-    "${EXEC_ARGV[@]}" 2>"$err" | sink "$reader" "$out"
+    "${EXEC_ARGV[@]}" 2>"$err" | sink "$host_reader" "$out"
   rc=${PIPESTATUS[0]}
   set -e
   ended=$(date +%s)

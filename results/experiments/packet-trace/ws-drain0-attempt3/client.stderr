@@ -1,0 +1,3 @@
+E0923 13:29:57.520789  202089 v2.go:151] "Copying stdout failed" err="next reader: read tcp 127.0.0.1:50314->127.0.0.1:40721: read: connection reset by peer"
+E0923 13:29:57.520789  202089 v2.go:168] "Copying stderr failed" err="next reader: read tcp 127.0.0.1:50314->127.0.0.1:40721: read: connection reset by peer"
+error: error reading from error stream: next reader: read tcp 127.0.0.1:50314->127.0.0.1:40721: read: connection reset by peer

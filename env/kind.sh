@@ -30,7 +30,7 @@ env_up() {
     local -a image=()
     [[ -n "${KIND_NODE_IMAGE:-}" ]] && image=(--image "$KIND_NODE_IMAGE")
     kind create cluster --name "$KIND_CLUSTER" \
-      --config "$REPO_ROOT/env/kind-cluster.yaml" "${image[@]}" --wait 180s >&2
+      --config "${KIND_CONFIG:-$REPO_ROOT/env/kind-cluster.yaml}" "${image[@]}" --wait 180s >&2
   fi
   apply_payload "$POD_NODE" --context "$KUBE_CONTEXT"
   wait_pod_ready --context "$KUBE_CONTEXT"
