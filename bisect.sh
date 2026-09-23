@@ -5,17 +5,25 @@
 # and every rung runs the identical generator and the identical verification as
 # the production calibration, so the rows compare directly.
 #
-#   rung 0  sha256sum inside the pod          no stream at all
-#   rung 1  k3s crictl exec on the node       containerd streaming server alone
-#   rung 2  https://node:10250/exec           + kubelet CRI proxy   (conditional)
-#   rung 3  apiserver, egress-selector=agent  + apiserver + remotedialer
-#   rung 4  apiserver, egress-selector=disabled  rung 3 minus remotedialer
+#   rung 0    sha256sum inside the pod          no stream at all
+#   rung 0.5  docker exec into the node         docker's own stream, as a control
+#   rung 1    crictl exec on the node           the runtime's CRI streaming server
+#                                               alone; reader in the node
+#   rung 2    https://node:10250/exec           + kubelet (not implemented)
+#   rung 3    apiserver, egress-selector=agent  + kubelet + apiserver + remotedialer
+#   rung 4    apiserver, egress-selector=disabled  rung 3 minus remotedialer
 #
 # Branching:
-#   rung 1 truncates                  -> containerd. Stop.
-#   rung 3 truncates, rung 4 clean    -> the k3s tunnel. Stop.
-#   rung 4 truncates too              -> kubelet or apiserver; rung 2 splits them.
+#   rung 1 truncates                  -> the CRI streaming server. Rung 4 is run
+#                                        anyway, because the upper hops can lose
+#                                        bytes as well.
+#   rung 3 truncates, rung 4 clean    -> the k3s tunnel.
+#   rung 4 truncates too              -> kubelet or apiserver.
 #   nothing truncates                 -> the clean room does not reproduce it.
+#
+# The CRI streaming server that containerd runs is Kubernetes' own
+# k8s.io/cri-streaming module, vendored. A rung 1 failure is therefore not a
+# containerd finding.
 
 set -euo pipefail
 
@@ -161,7 +169,12 @@ log "failures — rung 0.5: $r05_fail/$(runs_in "$CSV" 0.5), rung 1: $r1_fail/$(
 if ((r05_fail > 0)); then
   verdict "inconclusive at the bottom of the ladder: docker exec alone truncates ($r05_fail failures at rung 0.5), so rung 1 cannot be read as a statement about containerd. Re-run rung 1 with a reader that does not cross docker's hijacked stream before concluding anything about the runtime."
 elif ((r1_fail > 0)); then
-  verdict "containerd: the streaming server truncates with no kubelet, apiserver or tunnel in the path (rung 1 failed $r1_fail times, while docker exec alone was clean $(runs_in "$CSV" 0.5) times). File against containerd/containerd, beside #13934."
+  # Still run rung 4: the streaming server losing bytes does not mean it is the
+  # only hop that does, and the apiserver path has been seen to lose them too.
+  bring_up disabled
+  rung_apiserver 4
+  r4_fail=$(failures_in "$CSV" 4)
+  verdict "streaming server: the runtime's CRI streaming server truncates with no kubelet, apiserver or tunnel in the path (rung 1 failed $r1_fail/$(runs_in "$CSV" 1), docker exec alone clean $(runs_in "$CSV" 0.5) times; rung 3 failed $r3_fail, rung 4 failed $r4_fail). The streaming server containerd runs is Kubernetes' k8s.io/cri-streaming, so this is still filed against kubernetes/kubernetes, not containerd."
 else
   # Rung 4 is worth running whatever rung 3 did: if rung 3 was clean, rung 4
   # documents that removing the tunnel did not change a negative either.
@@ -173,7 +186,7 @@ else
   if ((r3_fail > 0 && r4_fail == 0)); then
     verdict "k3s: truncation appears with egress-selector-mode=agent and disappears with it disabled (rung 3 failed $r3_fail, rung 4 failed 0). File against k3s-io/k3s; no such issue exists today. Rung 2 is unnecessary."
   elif ((r4_fail > 0)); then
-    verdict "kubernetes: truncation survives removal of the k3s tunnel (rung 4 failed $r4_fail). The defect is in kubelet or apiserver. Rung 2 (direct kubelet:10250) is now worth its cost and splits the two. Reopen kubernetes/kubernetes#60140 with this reproduction."
+    verdict "kubernetes: truncation survives removal of the k3s tunnel (rung 4 failed $r4_fail) while the streaming server alone was clean. The defect is in kubelet or apiserver."
   else
     verdict "clean room green: no rung truncated locally. This is a real outcome, not a formality — the k8s-a numbers stand, and the difference between the two environments is now the object of study. Do not file upstream on this evidence."
   fi
