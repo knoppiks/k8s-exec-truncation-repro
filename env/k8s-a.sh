@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The cluster the defect was observed on: k3s v1.36.4+k3s1, three servers with
 # embedded etcd, egress-selector-mode unset (therefore "agent"), flannel
-# wireguard-native, Debian 13. Reached over the LAN from a workstation.
+# wireguard-native, Debian 13. Reached over a LAN, client outside the cluster.
 #
 # This is rung 5 of the ladder and the calibration target of Phase 0.
 

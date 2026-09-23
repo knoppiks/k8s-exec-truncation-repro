@@ -6,9 +6,9 @@
 # configuration that never loses bytes. Delay on the docker bridge puts bytes
 # in flight again.
 #
-# Requires passwordless sudo, which GitHub runners have and a workstation
-# usually does not. Every function is a no-op without it, and says so, because
-# a silently skipped mitigation turns a green matrix into a false negative.
+# Requires passwordless sudo, which CI runners have and interactive machines
+# often do not. Every function is a no-op without it, and says so, because a
+# silently skipped mitigation turns a green matrix into a false negative.
 
 netem_iface() {
   local net="${1:-k3s-repro}" id

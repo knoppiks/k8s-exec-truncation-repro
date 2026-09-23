@@ -34,7 +34,7 @@ digest_cmd() {
 
 # build_exec_argv REMOTE_SH_COMMAND
 #   Fills the global EXEC_ARGV with the argv that streams the command's stdout
-#   to our stdout. One case per rung.
+#   to the caller's stdout. One case per rung.
 build_exec_argv() {
   local cmd="$1"
   case "${RUNNER:-kubectl}" in

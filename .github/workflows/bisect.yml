@@ -3,8 +3,8 @@ name: bisect
 # Which layer loses the bytes: containerd, the k3s tunnel, or kubernetes.
 #
 # The ladder is in bisect.sh and the branching is in its verdict. This workflow
-# exists so a maintainer can re-run the bisection on neutral hardware without
-# trusting anyone's workstation.
+# exists so the bisection can be re-run on neutral hardware, by anyone, without
+# taking the recorded results on trust.
 
 on:
   workflow_dispatch:

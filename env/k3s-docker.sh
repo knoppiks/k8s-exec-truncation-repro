@@ -3,10 +3,11 @@
 #
 # Not k3d. Raw containers give exact version pinning, arbitrary server flags and
 # nothing else installed, which is what a bisection needs. Two containers rather
-# than three because the workstation has to keep running.
+# than three: a server and one agent are enough to put a node boundary between
+# the apiserver and the kubelet that serves the pod, and it fits in ~4 GB.
 #
 # Knobs, all via environment:
-#   K3S_VERSION   image tag, e.g. v1.36.4-k3s1 (production is v1.36.4+k3s1)
+#   K3S_VERSION   image tag, e.g. v1.36.4-k3s1
 #   EGRESS        agent | disabled — the k3s remotedialer tunnel, on or off
 #   POD_NODE      agent | server   — where the payload pod runs
 #   API_PORT      host port for the apiserver

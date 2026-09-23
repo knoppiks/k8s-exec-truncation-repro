@@ -179,8 +179,8 @@ docs/issue-*.md       draft issue text, not filed
 - **A green CI run would prove nothing on its own.** One fast runner with client,
   apiserver, kubelet and containerd in a single kernel is the configuration least likely
   to fail. The throttled reader is what makes it fail anyway; `netem` on the docker bridge
-  is available in CI for the same reason. This workstation could not use `netem`
-  (interactive `sudo`) and did not need it.
+  is available for the same reason, where passwordless `sudo` exists. Every result
+  recorded here was produced without it.
 - **kubelet versus apiserver is unsplit.** The ladder eliminates everything below kubelet,
   and nothing above it.
 - **containerd is exonerated only as far as `crictl exec` reaches.** kubelet's CRI proxy
