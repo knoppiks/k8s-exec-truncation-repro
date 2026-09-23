@@ -1,0 +1,5 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+k3s-v1.30.14-k3s2-egress-disabled-pod-agent,3,ws,32,slow,0,33554432,28966912,4587520,no,1,266,33,truncated
+k3s-v1.30.14-k3s2-egress-disabled-pod-agent,3,ws,32,slow,5,33554432,29510656,4043776,no,1,443,44,truncated
+k3s-v1.30.14-k3s2-egress-disabled-pod-agent,3,spdy,32,slow,0,33554432,30317568,3236864,no,0,0,33,truncated
+k3s-v1.30.14-k3s2-egress-disabled-pod-agent,3,spdy,32,slow,5,33554432,33554432,0,yes,0,0,35,complete
