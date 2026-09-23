@@ -55,10 +55,12 @@ jobs:
       - name: Run grid
         env:
           K3S_VERSION: ${{ steps.tag.outputs.tag }}
+          ENV_NAME: k3s-${{ steps.tag.outputs.tag }}-egress-${{ matrix.egress }}-pod-${{ matrix.pod_node }}
           EGRESS: ${{ matrix.egress }}
           POD_NODE: ${{ matrix.pod_node }}
           NETEM_DELAY_MS: ${{ inputs.netem_delay_ms || '20' }}
         run: |
+          set -o pipefail
           ./repro.sh setup --env k3s-docker
           ./repro.sh grid --env k3s-docker \
             --sizes "${{ inputs.sizes || '32,128' }}" \
@@ -95,7 +97,9 @@ jobs:
       - name: Run grid
         env:
           NETEM_DELAY_MS: ${{ inputs.netem_delay_ms || '20' }}
+          ENV_NAME: kind-ci
         run: |
+          set -o pipefail
           ./repro.sh setup --env kind
           ./repro.sh grid --env kind \
             --sizes "${{ inputs.sizes || '32,128' }}" \

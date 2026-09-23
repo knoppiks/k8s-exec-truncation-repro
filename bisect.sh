@@ -32,6 +32,8 @@ source "$REPO_ROOT/lib/run.sh"
 source "$REPO_ROOT/lib/verify.sh"
 # shellcheck source=lib/grid.sh
 source "$REPO_ROOT/lib/grid.sh"
+# shellcheck source=lib/netem.sh
+source "$REPO_ROOT/lib/netem.sh"
 
 # Defaults are the Phase 0 baseline; override on the command line.
 SIZES=${SIZES:-128}
@@ -76,6 +78,11 @@ bring_up() {
   ENV_NAME="k3s-docker-${K3S_VERSION}-egress-${egress}"
   env_down
   env_up
+  # Backlog forcing, where the host allows it. A rung that passes only because
+  # the host was fast has eliminated nothing.
+  if [[ "${NETEM_DELAY_MS:-0}" != 0 ]]; then
+    netem_apply "$NETEM_NETWORK" "$NETEM_DELAY_MS" || true
+  fi
   log "cluster up: $(env_describe)"
 }
 

@@ -89,7 +89,9 @@ cmd_setup() {
 
 cmd_teardown() {
   load_env
-  [[ -n "${NETEM_NETWORK:-}" ]] && netem_clear "$NETEM_NETWORK"
+  if [[ -n "${NETEM_NETWORK:-}" ]]; then
+    netem_clear "$NETEM_NETWORK"
+  fi
   env_down
   log "env down: $ENV_NAME"
 }
