@@ -59,26 +59,41 @@ up short.
   `SPDY Ping failed: connection closed`. Neither logs an error about the stream
   itself. Logs are in the repository under `results/experiments/verbose/`.
 
-In short: output that the process has already written is dropped once the process
-exits, if the client has not read it yet.
+In short: output that the process has already written is dropped when the session
+ends, if the client has not read it yet.
 
-### Where it is not
+### Where it happens
 
-Each step below adds one component to the path. Same pod, payload, reader and
-verification throughout. 32 MiB at 1 MiB/s, 5 runs per transport:
+Same pod, payload, reader and verification throughout. 32 MiB at 1 MiB/s:
 
 | path | short reads |
 |---|---|
 | hash computed inside the pod | 0/1 |
-| `docker exec` into the node | 0/5 |
-| `crictl exec` on the node, to the container runtime's streaming server | 0/5 |
+| `crictl exec` on the node, reader on the node — the CRI streaming server alone | 3/3 on kind, 5/5 on k3s, all exit `0` |
 | `kubectl exec` through the apiserver, k3s | 6/10 |
 | same, with k3s's apiserver-to-kubelet tunnel disabled | 9/10 |
 | `kubectl exec` through the apiserver, kind | 9/10 |
 
-The container runtime sends the full stream to a slow reader every time. Bytes go
-missing only when the apiserver and the kubelet are in the path. It is not specific to
-one distribution.
+It already happens with nothing but the CRI streaming server and `crictl`, and it keeps
+happening with every component added on top. It is not specific to one distribution.
+
+Packet captures on both nodes of the kind cluster during six short reads show where the
+bytes stop:
+
+- the kubelet forwarded everything it received, every time;
+- in two runs the CRI streaming server aborted its connection to the kubelet (RST, no
+  FIN) before sending everything;
+- in four runs the apiserver sent the client less than it had received from the
+  kubelet, three times ending the connection with an RST.
+
+On the node, the kernel counts one aborted connection (`TCPAbortOnData`) per short
+`crictl` read: the streaming server closed its socket, the reader sent it one more
+frame, and the connection was reset with output still unsent. With the process kept
+alive until the reader had caught up, the same sequence of closes happens and nothing
+is lost.
+
+So the problem is not in one place. Two components end the session by closing their
+connection while the reader is still behind.
 
 ### Which releases
 
@@ -117,15 +132,18 @@ behind a thin link did in 4 of 6 copies. Each failed copy exited `1` with
   were asked for there.
 - **#124571** (`kubectl exec` truncates stdout without reporting an error) was closed
   as stale and redirected to #60140. It describes the same problem.
-- **containerd#13934** is the stdin counterpart. The containerd streaming server
-  delivers stdout correctly in the reproduction above.
+- **containerd#13934** is the stdin counterpart, reported against containerd. The
+  streaming server that loses stdout here is the one Kubernetes provides for runtimes
+  to embed, so this report is filed here rather than there.
 
 ### Proposed follow-ups
 
 Two separate defects are visible here. Each can be fixed on its own:
 
-1. **Output is dropped after the process exits.** Output the process has written
+1. **Output is dropped when the session ends.** Output the process has written
    should reach the client even if the process exits before the client has read it.
+   This needs fixing in both places that drop it: the CRI streaming server and the
+   apiserver's side of the stream.
 2. **The client reports success anyway.** If the stream ended before all output was
    delivered, the client should not report the process's success as its own.
 

@@ -12,6 +12,12 @@ When a process run through exec exits, stdout it has already written but the cli
 has not yet received is discarded. The client gets an intact prefix of the stream; the
 end is missing. How much is missing depends on how far behind the client is.
 
+It happens at two points on the path. The CRI streaming server does it with no other
+component involved (`crictl exec` with a slow reader on the node). The apiserver does
+it again on its connection to the client, even when everything reached it intact. In
+both cases the session is ended by closing the connection while the reader is still
+behind, and the connection is reset with output still unsent.
+
 ### What should happen
 
 Everything the process wrote to stdout should reach the client, whether or not the
@@ -29,6 +35,7 @@ and nobody can know from inside the container how long that takes.
 ### Evidence
 
 See the umbrella issue. In short: the writer exits `0` having written everything; the
-received stream is an exact prefix; the container runtime's streaming server delivers
-the full stream to the same slow reader; and the loss appears once the kubelet and
-apiserver are in the path, on every release from 1.30 to 1.37.
+received stream is an exact prefix; `crictl exec` against the CRI streaming server alone
+loses the tail with a slow reader on the node; packet captures show the kubelet passing
+on everything it receives, and the streaming server and the apiserver each ending
+connections with output unsent; every release from 1.30 to 1.37 is affected.

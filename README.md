@@ -33,17 +33,83 @@ Same generator, same verification, every row.
 |---|---|---|
 | in-pod `sha256sum` | nothing | 0/1 |
 | `docker exec` into the node container | docker's hijacked stream | 0/5 |
-| `crictl exec` on the node | + containerd's streaming server | **0/5** |
+| `crictl exec` on the node, reader in the node | the CRI streaming server alone | **8/8** (kind 3/3, k3s 5/5) |
 | `kubectl exec`, k3s in docker, tunnel on | + kubelet + apiserver + k3s remotedialer | 6/10 |
 | `kubectl exec`, k3s in docker, tunnel off | + kubelet + apiserver | 9/10 |
 | `kubectl exec`, **kind**, vanilla Kubernetes 1.37 | + kubelet + apiserver | **9/10** |
 | `kubectl exec`, three-node k3s over a LAN | + the LAN | 5/6 at this cell |
 
-containerd delivers all 32 MiB to a slow reader every time. The bytes go missing once the
-apiserver is in the path, and they keep going missing when the distribution, its tunnel,
-the LAN and docker are all removed one at a time.
+It fails at the bottom of the stack — the streaming server with nothing above it — and at
+every level above, with the distribution, its tunnel, the LAN and docker each removed in
+turn.
 
-**It is upstream Kubernetes.** Not k3s, not containerd, not the network.
+**It is upstream Kubernetes.** Not k3s, not the network — and not containerd either,
+although the first hop that loses bytes runs inside the containerd process: the CRI
+streaming server there is Kubernetes' own `k8s.io/cri-streaming` module, vendored.
+
+> **Correction.** An earlier version of this table reported the `crictl exec` rung clean,
+> 0/5, and concluded that the loss begins above the runtime. That measurement was flawed:
+> the slow reader sat on the host behind `docker exec`, whose attach stream absorbed the
+> backlog, so `crictl` drained the streaming server at full speed and the server never
+> had a slow consumer. With the reader moved into the node, directly on `crictl`'s stdout,
+> the same rung truncates. `lib/run.sh` now always runs it that way.
+
+## Where the bytes go
+
+Packet captures on both kind nodes during each run give, per hop, how many bytes were sent
+(from TCP sequence numbers) and how each sender closed: FIN, which delivers what the
+sender's kernel still holds, or RST, which discards it (`experiments/packet-trace.sh`,
+`results/experiments/packet-trace/`).
+
+| run | client got | streaming server → kubelet | kubelet → apiserver | apiserver → client |
+|---|---|---|---|---|
+| ws 1 | 33.22 MB | 33.66 MB, FIN, RST | 33.96 MB | **33.62 MB, RST** |
+| ws 2 | 30.86 MB | **30.95 MB, RST** | 31.19 MB | 31.19 MB |
+| ws 3 | 27.92 MB | **31.37 MB, RST** | 31.62 MB | 31.62 MB, FIN, RST |
+| spdy 1 | 29.85 MB | 33.65 MB, FIN | 33.72 MB | **30.03 MB, RST** |
+| spdy 2 | 32.74 MB | 33.66 MB, FIN | 33.72 MB | **32.91 MB, RST** |
+| spdy 3 | 33.22 MB | 33.66 MB, FIN | 33.72 MB | **33.39 MB**, FIN |
+| either, `sleep 45` | complete | full, same closes | full | full, same closes |
+
+Payload 33.55 MB; hop counts include TLS and stream framing, about 1 % on top.
+
+- **The kubelet is not where bytes are lost.** In every run it forwarded everything it
+  received.
+- **The CRI streaming server loses them** when it aborts its connection to the kubelet
+  (ws 2, ws 3). Run alone under `crictl`, it truncates 3/3, exit `0`, and the node's
+  `TCPAbortOnData` counter rises by exactly one per short read.
+- **The apiserver loses them** on its connection to the client, either by aborting it
+  (ws 1, spdy 1, spdy 2) or by closing it before it has passed on everything it received
+  from the kubelet (spdy 3).
+- **The drained runs close the same way**, RSTs included, and lose nothing: once the
+  reader has caught up, nothing is left in flight to discard.
+
+### Mechanism
+
+Two components end an exec session by closing their socket as soon as the process's result
+is known, without waiting for the peer to finish reading:
+
+- The CRI streaming server writes the exit status and returns; a deferred `conn.Close()`
+  follows immediately (`k8s.io/cri-streaming/pkg/streaming/remotecommand/exec.go`,
+  `ServeExec`). Output still in its socket's send buffer is on its way — until the peer,
+  which is still reading and therefore still sending flow-control and ping frames, sends
+  one more. Data arriving on a closed socket makes Linux abort the connection with an RST
+  (`TCPAbortOnData`) and drop the unsent buffer.
+- The apiserver proxies the stream to the kubelet with a copy loop that ends the whole
+  session as soon as **either** direction finishes
+  (`k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go`, the `select` after "Wait for one
+  half the connection to exit"). When the kubelet side closes, the client→kubelet
+  direction fails first, and the deferred closes run while the kubelet→client direction
+  may still hold data: in the kernel's receive queue, or in the apiserver's send buffer
+  towards a client whose unread frames turn the close into an RST.
+
+The first is established by the counter and the in-node `crictl` runs. The second is the
+reading of the code that fits the apiserver-side captures; which apiserver code path
+serves each transport has not been traced.
+
+In both cases the fix direction is the same, and old: half-close, then drain the peer
+until it closes (a "lingering close"), instead of closing a socket that still has work in
+both directions.
 
 ## What the loss looks like
 
@@ -112,21 +178,39 @@ fix, and the margin has to cover the consumer's remaining backlog:
 server, one agent, exact version pinning, nothing else installed). Results in
 `results/bisect/`, verdict in `results/bisect/verdict.md`.
 
-Rung 0.5 exists because rung 1 reaches containerd through `docker exec`, which is itself
-a hijacked stream: if it truncated, rung 1 would say nothing about containerd. It does
-not truncate.
+k3s v1.36.4, pod on the agent node, 32 MiB at 1 MiB/s, five runs per cell
+(`ladder-1.36.4-agent-v2.csv`):
 
-Rung 2 — straight at `kubelet:10250` — is **not implemented**. kubelet's exec endpoint
-upgrades to SPDY/3.1, which no shell tool speaks, and the repository's constraint is
-`kubectl` + `docker` + coreutils. It would split kubelet from apiserver; it would not
-change who the issue is filed against. See `lib/kubelet-exec.sh`.
+| rung | path | short reads |
+|---|---|---|
+| 0 | hash inside the pod | 0/1 |
+| 0.5 | `docker exec` into the node | 0/5 |
+| 1 | `crictl exec`, reader in the node | **5/5** |
+| 3 | `kubectl exec`, tunnel on | WebSocket 5/5, SPDY 1/5 |
+| 4 | `kubectl exec`, tunnel off | WebSocket 2/5, SPDY 4/5 |
+
+The streaming server alone is the most reliable failure of all. Adding layers on top does
+not make it worse on average, because a faster intermediate reader can drain the
+streaming server in time and move the backlog to a hop further up, where the apiserver
+may or may not drop it.
+
+`ladder-1.36.4-agent.csv` is the first run, with the flawed rung 1 described in the
+correction above; it is kept because the rest of its rows are sound.
+
+Rung 0.5 checks that `docker exec` itself delivers a slow-read stream intact. It does,
+which is also why it was able to hide the loss beneath it.
+
+Rung 2 — straight at `kubelet:10250` — is **not implemented**, and no longer needed: the
+packet captures show directly that the kubelet forwards everything it receives. See
+`lib/kubelet-exec.sh`.
 
 ### The control group
 
 kind, two nodes, vanilla Kubernetes with no k3s in the picture: 9/10 truncated at the
-baseline cell, while `crictl exec` on the same node, same pod, same reader is 0/5. kind
-also runs containerd, so it controls for the distribution and not for the runtime; a
-CRI-O control would close that gap and is not here.
+baseline cell through the apiserver, and 3/3 through `crictl` on the node alone. kind
+also runs containerd, so it controls for the distribution and not for the runtime. CRI-O
+embeds the same `k8s.io/cri-streaming` server and would be expected to behave the same;
+that is untested.
 
 ### Version matrix
 
@@ -220,7 +304,8 @@ Against your own cluster, add an `env/` file next to `env/k8s-a.sh`; it needs `e
 repro.sh              one cell, one grid, one environment
 bisect.sh             the ladder and its branching verdict
 matrix.sh             version sweep
-experiments/          writer vs transit, gap location, -v=7 capture, kubectl cp
+experiments/          writer vs transit, gap location, -v=7, kubectl cp,
+                      crictl in the node, per-hop packet trace
 lib/                  run, verify, throttle, grid, report, netem, pod
 env/                  k8s-a, k3s-docker, kind, baseline
 manifests/            the payload pod
@@ -236,11 +321,16 @@ docs/issue-*.md       draft issue text: one umbrella, two follow-ups; not filed
   to fail. The throttled reader is what makes it fail anyway; `netem` on the docker bridge
   is available for the same reason, where passwordless `sudo` exists. The CI results used
   it; all other clean-room results did not, and truncated anyway.
-- **kubelet versus apiserver is unsplit.** The ladder eliminates everything below kubelet,
-  and nothing above it.
-- **containerd is exonerated only as far as `crictl exec` reaches.** kubelet's CRI proxy
-  sits between containerd and the apiserver and is inside the remaining suspect region.
-- **One runtime.** Both clean-room environments run containerd. CRI-O is untested.
+- **The ladder was wrong once, and could be wrong again the same way.** A slow reader only
+  tests a hop if nothing between it and that hop can absorb the backlog. Rung 1 got this
+  wrong until the reader moved into the node.
+- **The apiserver mechanism is inferred, not traced.** The captures show where the
+  apiserver drops bytes and how it closes; the code path named for it is a reading that
+  fits, not a measurement.
+- **Packet captures are from kind only**, six short reads and two controls. The k3s
+  numbers show the same symptom but were not captured.
+- **One runtime.** Both clean-room environments run containerd. CRI-O embeds the same
+  streaming server and is untested.
 - **Do not let the workaround become the finding.** Verifying where the data is produced,
   and draining before exit, already protect a fleet. This exists so the defect stops
   needing to be worked around.
