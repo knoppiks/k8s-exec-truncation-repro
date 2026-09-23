@@ -1,0 +1,13 @@
+Creating cluster "trunc" ...
+pod/payload created
+pod/payload condition met
+kubectl exec, websockets=true: E0923 14:28:35.600783  237940 v2.go:168] "Copying stderr failed" err="next reader: unexpected EOF"
+E0923 14:28:35.600783  237940 v2.go:151] "Copying stdout failed" err="next reader: unexpected EOF"
+error: error reading from error stream: next reader: unexpected EOF
+got=31860075
+  kubectl exit code: 1
+kubectl exec, websockets=false: got=32998850
+  kubectl exit code: 0
+crictl exec on the node: got=32429975
+  crictl exit code: 0
+kubectl exec, 'sleep 45' after the last write: got=33554432
