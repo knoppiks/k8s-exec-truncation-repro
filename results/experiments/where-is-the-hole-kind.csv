@@ -1,0 +1,7 @@
+env,transport,lines_expected,bytes_expected,bytes_got,lines_got,last_value,first_gap_at,tail_partial,verdict
+kind,ws,4000000,30888896,27932615,3630464,3630465,none,yes,tail-cut
+kind,ws,4000000,30888896,27991208,3637789,3637789,none,no,tail-cut
+kind,ws,4000000,30888896,27888408,3624939,3624939,none,no,tail-cut
+kind,spdy,4000000,30888896,28758096,3733650,3733650,none,no,tail-cut
+kind,spdy,4000000,30888896,29379008,3811264,3811264,none,no,tail-cut
+kind,spdy,4000000,30888896,29244343,3794430,3794431,none,yes,tail-cut

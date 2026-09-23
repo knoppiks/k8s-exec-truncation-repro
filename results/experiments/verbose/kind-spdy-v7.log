@@ -1,0 +1,31 @@
+I0923 08:19:57.657384  178469 loader.go:407] Config loaded from file:  /home/jwagner/.kube/config
+I0923 08:19:57.657737  178469 envvar.go:195] "Feature gate default state" feature="ClientsAllowCARotation" enabled=true
+I0923 08:19:57.657761  178469 envvar.go:195] "Feature gate default state" feature="ClientsPreferCBOR" enabled=false
+I0923 08:19:57.657772  178469 envvar.go:195] "Feature gate default state" feature="WatchListClient" enabled=true
+I0923 08:19:57.657782  178469 envvar.go:195] "Feature gate default state" feature="AtomicFIFO" enabled=true
+I0923 08:19:57.657792  178469 envvar.go:195] "Feature gate default state" feature="ClientsAllowCBOR" enabled=false
+I0923 08:19:57.657807  178469 envvar.go:195] "Feature gate default state" feature="InOrderInformersBatchProcess" enabled=true
+I0923 08:19:57.657817  178469 envvar.go:195] "Feature gate default state" feature="InformerResourceVersion" enabled=true
+I0923 08:19:57.657826  178469 envvar.go:195] "Feature gate default state" feature="UnlockWhileProcessingFIFO" enabled=true
+I0923 08:19:57.657836  178469 envvar.go:195] "Feature gate default state" feature="ClientsAllowTLSCacheGC" enabled=true
+I0923 08:19:57.657849  178469 envvar.go:195] "Feature gate default state" feature="InOrderInformers" enabled=true
+I0923 08:19:57.661729  178469 round_trippers.go:527] "Request" verb="GET" url="https://127.0.0.1:42285/api/v1/namespaces/exec-repro/pods/payload" headers=<
+	Accept: application/json, */*
+	User-Agent: kubectl/v1.36.4 (linux/amd64) kubernetes/bb826b1
+ >
+I0923 08:19:57.669203  178469 round_trippers.go:632] "Response" status="200 OK" milliseconds=7
+I0923 08:19:57.671137  178469 podcmd.go:84] Using the first container in a pod: payload
+I0923 08:19:57.671530  178469 round_trippers.go:527] "Request" verb="POST" url="https://127.0.0.1:42285/api/v1/namespaces/exec-repro/pods/payload/exec?command=sh&command=-c&command=dd+if%3D%2Fdev%2Fzero+bs%3D1048576+count%3D32+2%3E%2Fdev%2Fnull+%7C+tr+%27%5C0%27+%27x%27&container=payload&stderr=true&stdout=true" headers=<
+	User-Agent: kubectl/v1.36.4 (linux/amd64) kubernetes/bb826b1
+	X-Stream-Protocol-Version: v5.channel.k8s.io
+	X-Stream-Protocol-Version: v4.channel.k8s.io
+	X-Stream-Protocol-Version: v3.channel.k8s.io
+	X-Stream-Protocol-Version: v2.channel.k8s.io
+	X-Stream-Protocol-Version: channel.k8s.io
+ >
+I0923 08:19:57.686193  178469 round_trippers.go:632] "Response" status="101 Switching Protocols" milliseconds=14
+I0923 08:20:28.329056  178469 connection.go:200] SPDY Ping failed: connection closed
+I0923 08:20:28.329123  178469 connection.go:200] SPDY Ping failed: EOF
+
+--- harness note ---
+transport=spdy expected=33554432 got=32035840 lost=1518592 attempt=1

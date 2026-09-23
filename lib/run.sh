@@ -41,6 +41,10 @@ build_exec_argv() {
     kubectl)
       EXEC_ARGV=(kubectl)
       [[ -n "${KUBE_CONTEXT:-}" ]] && EXEC_ARGV+=(--context "$KUBE_CONTEXT")
+      # Verbosity is off by default: -v=7 logs every request and makes the
+      # stderr capture the size of the evidence. It is switched on deliberately,
+      # for the runs that are meant to be read by a maintainer.
+      [[ -n "${KUBECTL_VERBOSITY:-}" ]] && EXEC_ARGV+=("-v=$KUBECTL_VERBOSITY")
       EXEC_ARGV+=(-n "${NAMESPACE:-exec-repro}" exec "${POD:-payload}" -- sh -c "$cmd")
       ;;
     crictl)

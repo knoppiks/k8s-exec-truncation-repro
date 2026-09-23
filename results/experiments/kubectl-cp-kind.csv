@@ -1,0 +1,7 @@
+env,transport,size_mib,expected_bytes,got_bytes,sha_match,exit_code,seconds,verdict
+kind,ws,1024,1073741824,1073741824,yes,0,4,complete
+kind,ws,1024,1073741824,1073741824,yes,0,3,complete
+kind,ws,1024,1073741824,1073741824,yes,0,3,complete
+kind,spdy,1024,1073741824,1073741824,yes,0,3,complete
+kind,spdy,1024,1073741824,1073741824,yes,0,4,complete
+kind,spdy,1024,1073741824,1073741824,yes,0,3,complete

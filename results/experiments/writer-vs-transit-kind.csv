@@ -1,0 +1,11 @@
+env,transport,size_mib,reader,expected_bytes,got_bytes,produced_bytes,writer_exit,verdict
+kind,ws,32,slow,33554432,32014336,33554432,0,lost-after-writer
+kind,ws,32,slow,33554432,32407552,33554432,0,lost-after-writer
+kind,ws,32,slow,33554432,29265915,33554432,0,lost-after-writer
+kind,ws,32,slow,33554432,30474240,33554432,0,lost-after-writer
+kind,ws,32,slow,33554432,29429755,33554432,0,lost-after-writer
+kind,spdy,32,slow,33554432,30310400,33554432,0,lost-after-writer
+kind,spdy,32,slow,33554432,32210944,33554432,0,lost-after-writer
+kind,spdy,32,slow,33554432,33030144,33554432,0,lost-after-writer
+kind,spdy,32,slow,33554432,31064064,33554432,0,lost-after-writer
+kind,spdy,32,slow,33554432,33488896,33554432,0,lost-after-writer

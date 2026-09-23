@@ -1,0 +1,7 @@
+env,transport,size_mib,link_rate,expected_bytes,got_bytes,sha_match,exit_code,seconds,verdict
+kind,ws,256,20mbit,268435456,266403835,no,1,120,truncated
+kind,ws,256,20mbit,268435456,268201984,no,1,117,truncated
+kind,ws,256,20mbit,268435456,265711616,no,1,112,truncated
+kind,spdy,256,20mbit,268435456,268435456,yes,0,119,complete
+kind,spdy,256,20mbit,268435456,267644928,no,1,130,truncated
+kind,spdy,256,20mbit,268435456,268435456,yes,0,140,complete
