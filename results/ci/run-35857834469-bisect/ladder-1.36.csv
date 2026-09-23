@@ -1,0 +1,14 @@
+env,rung,transport,size_mib,reader,drain,expected_bytes,got_bytes,lost_bytes,sha_match,exit_code,stderr_len,seconds,verdict
+k3s-docker-v1.36.4-k3s1-egress-agent,0,na,32,inpod,0,33554432,33554432,0,yes,0,0,0,complete
+k3s-docker-v1.36.4-k3s1-egress-agent,0.5,na,32,slow,0,33554432,33554432,0,yes,0,0,32,complete
+k3s-docker-v1.36.4-k3s1-egress-agent,0.5,na,32,slow,0,33554432,33554432,0,yes,0,0,32,complete
+k3s-docker-v1.36.4-k3s1-egress-agent,1,na,32,slow,0,33554432,32048128,1506304,no,0,0,31,truncated
+k3s-docker-v1.36.4-k3s1-egress-agent,1,na,32,slow,0,33554432,32167936,1386496,no,0,0,31,truncated
+k3s-docker-v1.36.4-k3s1-egress-agent,3,ws,32,slow,0,33554432,31063040,2491392,no,1,392,31,truncated
+k3s-docker-v1.36.4-k3s1-egress-agent,3,ws,32,slow,0,33554432,27432955,6121477,no,1,269,27,truncated
+k3s-docker-v1.36.4-k3s1-egress-agent,3,spdy,32,slow,0,33554432,29539328,4015104,no,0,0,29,truncated
+k3s-docker-v1.36.4-k3s1-egress-agent,3,spdy,32,slow,0,33554432,33554432,0,yes,0,0,34,complete
+k3s-docker-v1.36.4-k3s1-egress-disabled,4,ws,32,slow,0,33554432,30060539,3493893,no,1,269,47,truncated
+k3s-docker-v1.36.4-k3s1-egress-disabled,4,ws,32,slow,0,33554432,31252480,2301952,no,1,266,30,truncated
+k3s-docker-v1.36.4-k3s1-egress-disabled,4,spdy,32,slow,0,33554432,33554432,0,yes,0,0,33,complete
+k3s-docker-v1.36.4-k3s1-egress-disabled,4,spdy,32,slow,0,33554432,27011072,6543360,no,0,0,30,truncated

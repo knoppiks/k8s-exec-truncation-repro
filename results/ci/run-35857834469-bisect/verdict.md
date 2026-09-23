@@ -1,0 +1,1 @@
+streaming server: the runtime's CRI streaming server truncates with no kubelet, apiserver or tunnel in the path (rung 1 failed 2/2, docker exec alone clean 2 times; rung 3 failed 3, rung 4 failed 3). The streaming server containerd runs is Kubernetes' k8s.io/cri-streaming, so this is still filed against kubernetes/kubernetes, not containerd.

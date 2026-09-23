@@ -11,3 +11,6 @@ Both runs: 32 MiB, 1 MiB/s reader, one run per cell, `ubuntu-latest`,
   k3s 1.36 with the pod on the server node, and kind. Transports ws and spdy,
   drain 0 s and 5 s.
 - `run-35825462203-bisect/` — the full ladder on k3s 1.36, with its verdict.
+- `run-35857834469-bisect/` — the ladder again on k3s 1.36, two runs per cell,
+  after rung 1 was corrected to run its reader inside the node. The CRI
+  streaming server alone truncates 2/2.
