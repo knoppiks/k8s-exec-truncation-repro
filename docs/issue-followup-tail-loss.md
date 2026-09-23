@@ -1,41 +1,48 @@
-# Draft — follow-up 1: output dropped after the process exits
+<!--
+Draft — follow-up 1, Bug Report form. NOT FILED.
+File only after the umbrella issue is triaged or a maintainer agrees with the
+split. Replace #UMBRELLA with its number.
+-->
 
-Not filed. Open after the umbrella issue has been acknowledged, and link it.
+**Title:** exec output still queued when the process exits is discarded
 
----
+### What happened?
 
-**Title:** exec drops stdout that has been written but not yet read by the client when the process exits
+Split out of #UMBRELLA.
 
-### What happens
+When an exec'd process exits while the client is still behind, the output that has
+been written but not yet delivered is discarded. The client gets an intact prefix;
+the end is missing.
 
-When a process run through exec exits, stdout it has already written but the client
-has not yet received is discarded. The client gets an intact prefix of the stream; the
-end is missing. How much is missing depends on how far behind the client is.
+It happens at two points on the path, and each loses bytes on its own:
 
-It happens at two points on the path. The CRI streaming server does it with no other
-component involved (`crictl exec` with a slow reader on the node). The apiserver does
-it again on its connection to the client, even when everything reached it intact. In
-both cases the session is ended by closing the connection while the reader is still
-behind, and the connection is reset with output still unsent.
+- the **CRI streaming server**, with nothing else involved (`crictl exec` on the node
+  with a slow reader: 5/5 short on v1.37.0);
+- the **apiserver**, on its connection to the client, even when everything reached it
+  intact from the kubelet.
 
-### What should happen
+In both cases the session ends with the connection being closed while the peer is
+still sending, and the connection is reset with output still unsent.
 
-Everything the process wrote to stdout should reach the client, whether or not the
-process has exited. The stream should close after the last byte has been delivered, not
-when the process exits.
+### What did you expect to happen?
 
-### Why it matters
+Everything the process wrote reaches the client. The stream ends after the last byte
+has been delivered, not when the process exits.
 
-Getting data out of a pod with `kubectl exec … > file` and `kubectl cp` is how many
-users take backups and export data. Both lose the end of the stream when the client is
-slower than the container: a slow consumer on the pipe, or a remote client on a thin
-link. The only workaround is to keep the process alive until the client has caught up,
-and nobody can know from inside the container how long that takes.
+### How can we reproduce it (as minimally and precisely as possible)?
 
-### Evidence
+The reproduction in #UMBRELLA. Section 2 of it (`crictl exec` on the node) is enough
+for the streaming server alone.
 
-See the umbrella issue. In short: the writer exits `0` having written everything; the
-received stream is an exact prefix; `crictl exec` against the CRI streaming server alone
-loses the tail with a slow reader on the node; packet captures show the kubelet passing
-on everything it receives, and the streaming server and the apiserver each ending
-connections with output unsent; every release from 1.30 to 1.37 is affected.
+### Anything else we need to know?
+
+See the code pointers in #UMBRELLA. Both places close a connection that still has
+traffic in the other direction. A fix would half-close the sending side and keep
+reading until the peer closes (a "lingering close"), rather than closing outright.
+
+I plan to send two PRs, one for the streaming server (`/sig node`) and one for the
+apiserver proxy (`/sig api-machinery`).
+
+### Kubernetes version
+
+As in #UMBRELLA (v1.37.0).

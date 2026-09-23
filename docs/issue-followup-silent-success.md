@@ -1,37 +1,41 @@
-# Draft — follow-up 2: a cut-short stream is reported as success
+<!--
+Draft — follow-up 2, Bug Report form. NOT FILED.
+File only after the umbrella issue is triaged or a maintainer agrees with the
+split. Replace #UMBRELLA with its number.
+-->
 
-Not filed. Open after the umbrella issue has been acknowledged, and link it.
+**Title:** `kubectl exec` exits 0 when the stream ends without an exit status
 
----
+### What happened?
 
-**Title:** `kubectl exec` exits 0 when stdout was cut short
+Split out of #UMBRELLA.
 
-### What happens
+When an exec stream ends before the exit status arrives, `kubectl exec` (and
+`crictl exec`) exit 0 and print nothing. On v1.37.0, every short read over SPDY was
+reported this way (5/5), and so was every short read from `crictl` against the CRI
+streaming server alone (5/5). Over WebSocket, short reads sometimes exit 1 with
+`unexpected EOF` and sometimes exit 0, depending on how the connection ends.
 
-When the stdout stream of an exec session ends before all of the process's output has
-been delivered, `kubectl exec` still exits with the process's exit code, usually `0`,
-and prints nothing. In the reproduction linked from the umbrella issue, 37 of 58 short
-reads across eight releases looked like this: exit `0`, empty stderr.
+### What did you expect to happen?
 
-The rest failed loudly (exit `1`, `websocket: close 1006` or `connection reset by
-peer`). Which one you get varies between runs, transports and clusters.
+If the client never received the exit status, it should not report success. A
+non-zero exit and a message on stderr would be enough for scripts, backup jobs and
+CI pipelines to notice.
 
-### What should happen
+### How can we reproduce it (as minimally and precisely as possible)?
 
-If the client cannot confirm that it received the whole stream, it should not report
-success. A non-zero exit and a message on stderr would be enough to make every script,
-backup job and CI pipeline that relies on `kubectl exec` notice.
+The reproduction in #UMBRELLA; look at the exit codes of the SPDY and `crictl` runs.
 
-### Why this is separate from the data loss
+### Anything else we need to know?
 
-Even after the loss itself is fixed, any other interruption (a proxy timeout, a node
-going away, a load balancer resetting an idle connection) can end a stream early. The
-client should tell the difference between "the process finished and I have all of its
-output" and "the connection ended". Today it cannot, or does not, and so a partial
-result is reported as a complete one. That is what makes the data loss dangerous: it
-is not noticed until the data is needed.
+This is separate from the data loss itself. Any interruption, such as a proxy
+timeout, a node going away, or a load balancer resetting an idle connection, can end a
+stream early. The client should tell "the process finished and I have all of its
+output" apart from "the connection ended". Today an empty error stream is read as
+success (pointer in #UMBRELLA).
 
-### Evidence
+`/sig cli`
 
-See the umbrella issue. Short reads with exit `0` and an empty stderr occurred on every
-release tested, on both transports, and on GitHub-hosted runners.
+### Kubernetes version
+
+As in #UMBRELLA (v1.37.0).

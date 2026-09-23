@@ -233,6 +233,22 @@ WebSocket the default — the release #60140 believes fixed this.
 the release that introduced it to the newest available. 1.30 did not fix this. Of the 80
 runs, 58 truncated and 37 of those did so with exit `0` and an empty stderr.
 
+### On the current release, with a matching client
+
+kind v1.37.0 and `kubectl` v1.37.0, the latest release when measured, five runs per
+cell (`results/v1.37/`, including the version outputs the bug template asks for):
+
+| path | short reads | exit 0, empty stderr |
+|---|---|---|
+| `kubectl exec`, WebSocket | 3/5 | 0 |
+| `kubectl exec`, SPDY | 5/5 | 5 |
+| `crictl exec` on the node, reader in the node | 5/5 | 5 |
+| `crictl exec` on the node, reader not throttled | 0/5 | |
+
+`docs/minimal-repro.sh` is the self-contained reproduction used in the issue draft. It
+needs only `kind`, `kubectl`, `docker` and `bash`, and its output from one run is in
+`results/v1.37/minimal-repro-output.txt`.
+
 ### On GitHub-hosted runners
 
 The same measurements, run by `.github/workflows/` on `ubuntu-latest` with 20 ms of
@@ -311,6 +327,8 @@ env/                  k8s-a, k3s-docker, kind, baseline
 manifests/            the payload pod
 results/              every run ever recorded, as CSV; results/ci/ from Actions
 docs/issue-*.md       draft issue text: one umbrella, two follow-ups; not filed
+docs/minimal-repro.sh the self-contained reproduction the issue draft quotes
+docs/before-filing.md what the Kubernetes contributor guide requires first
 .github/workflows/    the same measurements on neutral hardware
 ```
 

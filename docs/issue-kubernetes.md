@@ -1,157 +1,246 @@
-# Draft — kubernetes/kubernetes, umbrella issue
+<!--
+Draft — kubernetes/kubernetes, Bug Report form. NOT FILED.
+Each "### " heading below is one field of the form; paste the section body
+into it. Work through docs/before-filing.md first. The two narrower issues are
+in issue-followup-*.md and are filed only after this one is triaged.
+-->
 
-Not filed. This is the general report. The two narrower issues it gives rise to
-are drafted in `issue-followup-tail-loss.md` and `issue-followup-silent-success.md`,
-to be opened once this one is acknowledged, each with a PR.
+**Title:** exec drops the end of stdout when the client reads slower than the process writes, often with exit code 0
 
----
+### What happened?
 
-**Title:** exec streams drop the end of stdout when the client reads slower than the container writes, and usually report success
+A process run with `kubectl exec` writes N bytes to stdout and exits 0. When the
+client reads more slowly than the process writes, it receives fewer than N bytes: an
+intact prefix with the end missing. `kubectl exec` often exits 0 with nothing on
+stderr, so the short result cannot be told apart from a complete one.
+`kubectl cp` fails in the same situation with `error: unexpected EOF`.
 
-### What happens
+On v1.37.0 (kind, two nodes, kubectl v1.37.0), 32 MiB written and read at 1 MiB/s:
 
-A process in a container writes N bytes to stdout and exits `0`. The client
-receives fewer than N bytes. `kubectl exec` usually exits `0` with an empty stderr,
-so the short result looks exactly like a complete one. `kubectl cp` fails with
-`error: unexpected EOF`, which is the symptom reported in #60140.
-
-It happens when the client reads slower than the container writes: a slow consumer,
-a thin link, or a large payload that outruns either. A client reading at
-line rate from a nearby apiserver does not hit it, which is why it has been hard to
-reproduce on demand.
-
-### What should happen
-
-Either the client receives all N bytes, or it exits non-zero. A stream that is cut
-short must not be reported as a success, because the receiver cannot know how long
-the stream should have been.
-
-### Reproduction
-
-Needs `kubectl`, `docker`, `jq` and coreutils. Creates a two-node kind cluster.
-
-```
-git clone https://github.com/knoppiks/k8s-exec-truncation-repro
-cd k8s-exec-truncation-repro
-./repro.sh setup --env kind
-./repro.sh grid --env kind --sizes 32 --readers slow --transports ws,spdy --runs 5
-```
-
-The container writes 32 MiB of a deterministic payload; the client reads it at
-1 MiB/s. Expected size and sha256 are computed by a second exec inside the container,
-whose own output is 80 bytes. On a two-node kind cluster, v1.37.0, 9 of 10 runs come
-up short.
-
-### What the loss looks like
-
-- **The process finished.** In every short read, the writer inside the container had
-  written everything and exited `0`. It was not killed. (10/10)
-- **The start is intact and the end is missing.** A `seq 1 4000000` stream arrives as
-  exactly `1 … k` for some k, with no gaps, sometimes cut in the middle of a number.
-  Nothing is dropped from the middle of the stream. (6/6)
-- **The amount lost tracks what the client had not read yet.** Typically 1–8 MB of a
-  32 MiB stream at 1 MiB/s. Keeping the process alive after its last write stops the
-  loss, but only if the delay is longer than the client needs to catch up. On the LAN
-  cluster, `sleep 5` did not stop it at 1 MiB/s (4/6 still short), and `sleep 45` did
-  (6/6 complete).
-- **The client sees the connection close normally.** With `-v=7`, a failing WebSocket
-  run ends in `"Closed channel -- returning"` and a failing SPDY run in
-  `SPDY Ping failed: connection closed`. Neither logs an error about the stream
-  itself. Logs are in the repository under `results/experiments/verbose/`.
-
-In short: output that the process has already written is dropped when the session
-ends, if the client has not read it yet.
-
-### Where it happens
-
-Same pod, payload, reader and verification throughout. 32 MiB at 1 MiB/s:
-
-| path | short reads |
-|---|---|
-| hash computed inside the pod | 0/1 |
-| `crictl exec` on the node, reader on the node — the CRI streaming server alone | 3/3 on kind, 5/5 on k3s, all exit `0` |
-| `kubectl exec` through the apiserver, k3s | 6/10 |
-| same, with k3s's apiserver-to-kubelet tunnel disabled | 9/10 |
-| `kubectl exec` through the apiserver, kind | 9/10 |
-
-It already happens with nothing but the CRI streaming server and `crictl`, and it keeps
-happening with every component added on top. It is not specific to one distribution.
-
-Packet captures on both nodes of the kind cluster during six short reads show where the
-bytes stop:
-
-- the kubelet forwarded everything it received, every time;
-- in two runs the CRI streaming server aborted its connection to the kubelet (RST, no
-  FIN) before sending everything;
-- in four runs the apiserver sent the client less than it had received from the
-  kubelet, three times ending the connection with an RST.
-
-On the node, the kernel counts one aborted connection (`TCPAbortOnData`) per short
-`crictl` read: the streaming server closed its socket, the reader sent it one more
-frame, and the connection was reset with output still unsent. With the process kept
-alive until the reader had caught up, the same sequence of closes happens and nothing
-is lost.
-
-So the problem is not in one place. Two components end the session by closing their
-connection while the reader is still behind.
-
-### Which releases
-
-| release | WebSocket | SPDY |
+| path | short reads | of those, exit 0 and empty stderr |
 |---|---|---|
-| kind v1.30.13 | 4/5 | 5/5 |
-| kind v1.32.11 | 5/5 | 4/5 |
-| kind v1.34.11 | 4/5 | 3/5 |
-| kind v1.37.0 | 4/5 | 5/5 |
-| k3s v1.30.14 | 5/5 | 2/5 |
-| k3s v1.32.13 | 5/5 | 0/5 |
-| k3s v1.34.11 | 5/5 | 0/5 |
-| k3s v1.36.4 | 5/5 | 2/5 |
+| `kubectl exec`, WebSocket (default) | 3/5 | 0 |
+| `kubectl exec`, SPDY | 5/5 | 5 |
+| `crictl exec` on the node, same reader | 5/5 | 5 |
+| `crictl exec` on the node, reader not throttled | 0/5 | |
+| `kubectl exec`, process sleeps 45 s after its last write | 0/1 | |
 
-On GitHub-hosted runners (with 20 ms of latency added between the nodes), 30 of 40
-runs came up short across k3s 1.30–1.36 and kind. 1.30, which made WebSocket the
-default, did not fix this.
+The `crictl` row has only the CRI streaming server in the path: no kubelet, no
+apiserver, no network.
 
-### `kubectl cp`
+A client that keeps up does not trigger it, which is probably why #60140 could not be
+reproduced with multi-GB copies to a local cluster. A consumer that is slower than the
+producer does: a remote client on a thin link, or a slow pipe on the receiving end.
 
-| `kubectl cp` client | file | WebSocket | SPDY |
-|---|---|---|---|
-| same host, writing to local disk | 1 GiB | 0/3 | 0/3 |
-| behind a 20 Mbit/s link | 256 MiB | 3/3 | 1/3 |
+### What did you expect to happen?
 
-A fast local client never triggered it, even with a four times larger file. A client
-behind a thin link did in 4 of 6 copies. Each failed copy exited `1` with
-`error: unexpected EOF`: `cp` notices because the tar stream ends early, which a raw
-`kubectl exec` cannot do.
+Everything the process wrote reaches the client, or the client exits non-zero. A
+stream that was cut short should never be reported as a success.
 
-### Relation to existing issues
+### How can we reproduce it (as minimally and precisely as possible)?
 
-- **#60140** was closed in 2025 because it could not be reproduced with multi-GB copies
-  to a local cluster. That setup has no slow reader, and it did not fail in the table
-  above either. This report supplies the missing ingredient and the logs that
-  were asked for there.
-- **#124571** (`kubectl exec` truncates stdout without reporting an error) was closed
-  as stale and redirected to #60140. It describes the same problem.
-- **containerd#13934** is the stdin counterpart, reported against containerd. The
-  streaming server that loses stdout here is the one Kubernetes provides for runtimes
-  to embed, so this report is filed here rather than there.
+Needs `kind`, `kubectl`, `docker`, `bash`.
 
-### Proposed follow-ups
+```bash
+cat <<'EOF' | kind create cluster --name trunc --config -
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes: [{role: control-plane}, {role: worker}]
+EOF
+kubectl run payload --image=alpine:3.22 --restart=Never \
+  --overrides='{"spec":{"nodeName":"trunc-worker"}}' -- sleep infinity
+kubectl wait --for=condition=Ready pod/payload --timeout=120s
 
-Two separate defects are visible here. Each can be fixed on its own:
+# The container writes exactly 32 MiB (33554432 bytes) and exits 0.
+PAYLOAD='head -c 33554432 /dev/zero'
 
-1. **Output is dropped when the session ends.** Output the process has written
-   should reach the client even if the process exits before the client has read it.
-   This needs fixing in both places that drop it: the CRI streaming server and the
-   apiserver's side of the stream.
-2. **The client reports success anyway.** If the stream ended before all output was
-   delivered, the client should not report the process's success as its own.
+# A reader that consumes 1 MiB per second and prints how many bytes it got.
+slow_count() {
+  total=0
+  while n=$(head -c 1048576 | wc -c) && [ "$n" -gt 0 ]; do
+    total=$((total + n)); sleep 1
+  done
+  echo "got=$total"
+}
 
-Fixing 2 alone would make the failure visible. Fixing 1 would stop it happening. I
-plan to open both as separate issues with PRs.
+# 1) kubectl exec through the apiserver: WebSocket (default), then SPDY.
+for ws in true false; do
+  echo -n "kubectl exec, websockets=$ws: "
+  KUBECTL_REMOTE_COMMAND_WEBSOCKETS=$ws kubectl exec payload -- sh -c "$PAYLOAD" | slow_count
+  echo "  kubectl exit code: ${PIPESTATUS[0]}"
+done
 
-### Environment
+# 2) The same reader on the node, reading crictl exec directly: only the CRI
+#    streaming server is in the path. No kubelet, apiserver or network.
+id=$(docker exec trunc-worker crictl ps --name payload -q)
+echo -n "crictl exec on the node: "
+docker exec trunc-worker bash -c "$(declare -f slow_count)
+  crictl exec $id sh -c '$PAYLOAD' | slow_count
+  echo \"  crictl exit code: \${PIPESTATUS[0]}\""
 
-- kind v0.33.0; node images v1.30.13, v1.32.11, v1.34.11, v1.37.0; containerd 2.3.4
-- k3s v1.30.14–v1.36.4 in docker, and a three-node k3s v1.36.4 cluster on a LAN
-- `kubectl` v1.36.4
+# Control: keep the process alive until the reader has caught up.
+echo -n "kubectl exec, 'sleep 45' after the last write: "
+kubectl exec payload -- sh -c "$PAYLOAD; sleep 45" | slow_count
+```
+
+Output from one run:
+
+```
+kubectl exec, websockets=true: E0923 14:28:35.600783  237940 v2.go:168] "Copying stderr failed" err="next reader: unexpected EOF"
+E0923 14:28:35.600783  237940 v2.go:151] "Copying stdout failed" err="next reader: unexpected EOF"
+error: error reading from error stream: next reader: unexpected EOF
+got=31860075
+  kubectl exit code: 1
+kubectl exec, websockets=false: got=32998850
+  kubectl exit code: 0
+crictl exec on the node: got=32429975
+  crictl exit code: 0
+kubectl exec, 'sleep 45' after the last write: got=33554432
+```
+
+Fuller measurements, per-hop packet captures and scripts:
+https://github.com/knoppiks/k8s-exec-truncation-repro
+
+### Anything else we need to know?
+
+**What the loss looks like.** The process is not killed: in every short read it had
+written everything and exited 0 (checked from inside the container afterwards). A
+`seq` stream arrives as exactly `1 … k` with no gaps, so it is the end that goes
+missing, not something in the middle. How much is lost depends on how far behind the
+reader is when the process exits.
+
+**Where it happens.** Packet captures on both nodes during six short reads (v1.37.0)
+show the kubelet passing on everything it received, every time. Bytes were lost in
+two places:
+
+- **CRI streaming server → kubelet**, twice: the connection was reset (RST, no FIN)
+  before everything had been sent. The same happens with `crictl` alone (the table
+  above). On the node, the kernel's `TcpExtTCPAbortOnData` counter goes up by exactly
+  one for each short `crictl` read and not at all for complete ones.
+- **apiserver → client**, four times: the apiserver sent the client less than it had
+  received from the kubelet, three times ending with an RST.
+
+**Code pointers** (my reading, links pinned to v1.37.0):
+
+<details>
+
+- The CRI streaming server closes the connection as soon as the exec finishes and
+  the status is written, without waiting for the peer to read what is still queued:
+  [`defer ctx.conn.Close()` in `ServeExec`](https://github.com/kubernetes/kubernetes/blob/f54c212e3a2f75d674b717a9b29052b20b60aefc/staging/src/k8s.io/cri-streaming/pkg/streaming/remotecommand/exec.go#L46).
+  The client is still behind, so it is still sending (flow control, pings). Data
+  arriving on a closed socket makes Linux reset the connection and throw away what
+  was still unsent. That matches the counter above.
+- The apiserver proxies exec through `UpgradeAwareHandler` for both transports on
+  1.37 (`apiserver_websocket_streaming_requests_total{proxy_type="proxied_to_kubelet",subresource="exec"}`
+  counted the WebSocket runs). Its copy loop ends the whole session as soon as
+  *either* direction finishes:
+  [`select` on `writerComplete` / `readerComplete`](https://github.com/kubernetes/kubernetes/blob/f54c212e3a2f75d674b717a9b29052b20b60aefc/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go#L447-L452),
+  followed by the deferred closes of both connections
+  ([L348](https://github.com/kubernetes/kubernetes/blob/f54c212e3a2f75d674b717a9b29052b20b60aefc/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go#L348),
+  [L386](https://github.com/kubernetes/kubernetes/blob/f54c212e3a2f75d674b717a9b29052b20b60aefc/staging/src/k8s.io/apimachinery/pkg/util/proxy/upgradeaware.go#L386)).
+  When the kubelet side closes, the kubelet→client direction can still hold data.
+  This fits the captures; I have not traced it inside the apiserver.
+- The exit code: when the error stream ends without a status message, client-go
+  treats that as success:
+  [`default: errorChan <- nil`](https://github.com/kubernetes/kubernetes/blob/f54c212e3a2f75d674b717a9b29052b20b60aefc/staging/src/k8s.io/client-go/tools/remotecommand/errorstream.go#L48-L49).
+  The status is written after stdout, so it is lost together with the end of stdout,
+  and the result reads as exit 0.
+
+</details>
+
+**Proposed split.** There are two separate problems here, and I would like to follow
+up with one issue and PR(s) for each, if maintainers agree:
+
+1. Output that has been written is dropped when the session ends before the reader
+   has caught up (CRI streaming server and apiserver proxy).
+2. A stream that ends without an exit status is reported as success.
+
+Fixing 2 makes the failure visible. Fixing 1 stops it happening.
+
+**Affected releases.** Same measurement on kind v1.30.13, v1.32.11, v1.34.11 and
+v1.37.0, and on k3s v1.30–v1.36. Every release loses bytes; 1.30, which made
+WebSocket the default, is not better. Also seen on GitHub-hosted runners and on a
+three-node k3s cluster over a LAN.
+
+**Related.** #60140 (`kubectl cp` fails on large files, closed as not reproducible)
+and #124571 (`kubectl exec` truncates stdout without reporting error, closed as
+stale) describe this. containerd#13934 is the stdin counterpart. This is data loss,
+not a security issue, so I am reporting it here.
+
+The investigation was done with the help of AI tooling. I have reproduced the results
+above myself.
+
+### Kubernetes version
+
+<details>
+
+```console
+$ kubectl version
+Client Version: v1.37.0
+Kustomize Version: v5.8.1
+Server Version: v1.37.0
+```
+
+</details>
+
+### Cloud provider
+
+<details>
+None: kind v0.33.0 (two nodes) on a local docker host.
+</details>
+
+### OS version
+
+<details>
+
+```console
+# kind node
+$ cat /etc/os-release
+PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
+NAME="Debian GNU/Linux"
+VERSION_ID="13"
+VERSION="13 (trixie)"
+VERSION_CODENAME=trixie
+DEBIAN_VERSION_FULL=13.6
+ID=debian
+$ uname -a
+Linux exec-repro-worker 7.0.0-31-generic #31-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 04:26:38 UTC 2026 x86_64 GNU/Linux
+```
+
+</details>
+
+### Install tools
+
+<details>
+kind v0.33.0, node image kindest/node:v1.37.0
+</details>
+
+### Container runtime (CRI) and version (if applicable)
+
+<details>
+
+```console
+$ crictl version
+Version:  0.1.0
+RuntimeName:  containerd
+RuntimeVersion:  v2.3.4
+RuntimeApiVersion:  v1
+```
+
+</details>
+
+### Related plugins (CNI, CSI, ...) and versions (if applicable)
+
+<details>
+kind defaults (kindnet). Not involved: the loss also occurs with crictl on the node.
+</details>
+
+<!--
+After filing, as a separate comment (each command on its own line):
+
+/sig node
+/sig api-machinery
+/sig cli
+
+And one line on #60140 linking the new issue.
+-->
