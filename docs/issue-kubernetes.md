@@ -202,19 +202,32 @@ None: kind v0.33.0 (two nodes) on a local docker host.
 
 <details>
 
+The kind nodes are containers on one host: they share the host's kernel, and only
+their userland comes from the node image.
+
 ```console
-# kind node
+# Host (runs docker, the kind nodes and kubectl)
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 26.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="26.04"
+VERSION="26.04.1 LTS (Resolute Raccoon)"
+VERSION_CODENAME=resolute
+ID=ubuntu
+ID_LIKE=debian
+$ uname -srvmo
+Linux 7.0.0-31-generic #31-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 04:26:38 UTC 2026 x86_64 GNU/Linux
+
+# kind node image (kindest/node:v1.37.0), userland only
 $ cat /etc/os-release
 PRETTY_NAME="Debian GNU/Linux 13 (trixie)"
-NAME="Debian GNU/Linux"
 VERSION_ID="13"
-VERSION="13 (trixie)"
-VERSION_CODENAME=trixie
 DEBIAN_VERSION_FULL=13.6
 ID=debian
-$ uname -a
-Linux exec-repro-worker 7.0.0-31-generic #31-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 04:26:38 UTC 2026 x86_64 GNU/Linux
 ```
+
+Also reproduced on a three-node k3s cluster on Debian 13, kernel
+`6.12.74+deb13+1-amd64`.
 
 </details>
 
