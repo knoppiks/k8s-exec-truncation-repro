@@ -164,8 +164,17 @@ three-node k3s cluster over a LAN.
 
 **Related.** #60140 (`kubectl cp` fails on large files, closed as not reproducible)
 and #124571 (`kubectl exec` truncates stdout without reporting error, closed as
-stale) describe this. containerd#13934 is the stdin counterpart. This is data loss,
-not a security issue, so I am reporting it here.
+stale) describe this.
+
+containerd#13934 (a duplicate of containerd#12734) looks similar but is a different
+bug. There, stdin is cut short because containerd's exec IO closes the stdin stream
+as soon as the process's stdout reaches EOF; containerd#12733 proposes a fix in
+containerd. Here stdin is not used at all, the process keeps stdout open until it
+exits, and the output reaches the streaming server intact. The two share only the
+last step: the connection is closed while the peer is still sending, and the kernel
+resets it.
+
+This is data loss, not a security issue, so I am reporting it here.
 
 The investigation was done with the help of AI tooling. I have reproduced the results
 above myself.
